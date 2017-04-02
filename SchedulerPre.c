@@ -60,6 +60,7 @@
 Task Tasks[NUMTASKS];           /* Lower indices: lower priorities           */
 volatile int8_t BusyPrio;       /* Current priority being served             */
 uint8_t Pending = 0;            /* Indicates if there is a pending task      */ 
+uint8_t hasNonpre = 0;          /* has non-preemptive task, initialised as 0 */  
 
 void HandleTasks (void);
 
@@ -74,7 +75,7 @@ uint16_t IntDisable (void)
 
 void RestoreSW (uint16_t sw)
 {
-  if (Pending && (sw & INTRPT_BIT)) HandleTasks ();
+  if (Pending && (sw & INTRPT_BIT) && (!hasNonpre)) HandleTasks ();
     // r2 = sw
   asm volatile ("mov.w %0, r2\n\t" :: "r"(sw));
 }  
@@ -158,10 +159,12 @@ void HandleTasks (void)
   BusyPrio = NUMTASKS-1;   // Start at highest priority
   while (BusyPrio != oldBP) { 
     Taskp CurTask = CurrentTask ();
-    while (CurTask->Activated != CurTask->Invoked) {
+    while (CurTask->Activated != CurTask->Invoked && !Pending) {
       CurTask->Invoked++; 
       if (CurTask->Flags & TRIGGERED) {
+        if (CurTask->Flags & FPDS) hasNonpre = 1;
         _EINT(); CurTask->Taskf(); _DINT();
+        hasNonpre = 0; 
       }
       else CurTask->Activated = CurTask->Invoked;
     }
@@ -182,7 +185,7 @@ interrupt (TIMERA0_VECTOR) TimerIntrpt (void)
         else Pending |= i>BusyPrio;
       }
   } while (i--);
-  if (Pending) HandleTasks (); /* stay in interrupt context *
+  if (Pending && !hasNonpre) HandleTasks (); /* stay in interrupt context *
                                 * interrupts disabled       */
 }
 
