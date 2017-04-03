@@ -150,6 +150,11 @@ uint8_t UnRegisterTask (uint8_t t)
  *   Activate (t, d): activate task t after d time units
  */
 
+void Yield (void){
+  while (Pending) { HandleTasks (); } 
+  _EINT();
+}
+
 void HandleTasks (void)
 { 
   int8_t oldBP = BusyPrio; // Save BusyPrio = current task handling level
